@@ -4,7 +4,8 @@
   "type": "module",
   "dependencies": {
     "discord.js": "14.x",
-    "dotenv": "4.x"
+    "dotenv": "4.x",
+    "langchain": "file:../../langchain/langchainjs/langchain"
   },
   "scripts": {
     "start": "node src/index.js"

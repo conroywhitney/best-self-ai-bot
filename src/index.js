@@ -1,6 +1,8 @@
 import * as dotenv from 'dotenv';
 import { ChannelType, Client, Events, GatewayIntentBits, Partials } from 'discord.js'
 
+import { getGPTResponse } from './gpt.js';
+
 dotenv.config();
 
 const client = new Client({
@@ -28,23 +30,17 @@ client.on(Events.MessageCreate, async (message) => {
     // Start the "typing" indicator
     message.channel.sendTyping();
 
-    // Relay the message to GPT and get the response
-    const gptResponse = await getGPTResponse(message.content);
+    try {
+      // Relay the message to GPT and get the response
+      const { response } = await getGPTResponse(message.content);
 
-    console.log(gptResponse)
-
-    // simulate a delay
-    setTimeout(() => {
-        // Send the GPT response back to the user in a DM
-        message.channel.send(gptResponse);
-    }, 5000);
+      console.log(response)
+      message.channel.send(response);
+    } catch (error) {
+      console.error(error);
+      message.channel.send("Sorry, an error occurred.");
+    }
   }
 });
 
 client.login(process.env.DISCORD_TOKEN);
-
-async function getGPTResponse(input) {
-  // Replace this with the code to call the GPT API and get the response
-  const response = `GPT response to: ${input}`;
-  return response;
-}
