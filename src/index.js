@@ -1,18 +1,41 @@
 import * as dotenv from 'dotenv';
 import { ChannelType, Client, Events, GatewayIntentBits, Partials } from 'discord.js'
 
+import { getGPTResponse } from './gpt.js';
+
 dotenv.config();
+
+let botId = null;
 
 const client = new Client({
 	intents: [
-        GatewayIntentBits.DirectMessages,
-        GatewayIntentBits.DirectMessageReactions
+    GatewayIntentBits.DirectMessages,
+    GatewayIntentBits.DirectMessageReactions
 	],
-    partials: [Partials.Channel],
+  partials: [Partials.Channel],
 });
 
+const preloadMessages = async (channel) => {
+  const messageHistory = await channel.messages.fetch({ limit: 100 });
+  const messages = messageHistory.filter((message) => {
+    const { content } = message;
+
+    return !(content == "Sorry, an error occurred." || content == "pong" || content.startsWith("GPT response to:"))
+  }).map((message) => {
+    const { author, content } = message;
+
+    return {
+      content,
+      role: author.id == botId ? "assistant" : "user"
+    }
+  }).reverse();
+
+  return messages;
+}
+
 client.on(Events.ClientReady, () => {
-  console.log(`Logged in as ${client.user.tag}!`);
+  botId = client.user.id;
+  console.log(`Logged in as ${client.user.tag}! (${botId})`);
 });
 
 client.on(Events.MessageReactionAdd, async (reaction) => {
@@ -25,26 +48,22 @@ client.on(Events.MessageCreate, async (message) => {
 
   // Check if the message is a DM
   if (message.channel.type == ChannelType.DM) {
+    const messages = await preloadMessages(message.channel);
+
     // Start the "typing" indicator
     message.channel.sendTyping();
 
-    // Relay the message to GPT and get the response
-    const gptResponse = await getGPTResponse(message.content);
+    try {
+      // Relay the message to GPT and get the response
+      const { response } = await getGPTResponse({ input: message.content, messages });
 
-    console.log(gptResponse)
-
-    // simulate a delay
-    setTimeout(() => {
-        // Send the GPT response back to the user in a DM
-        message.channel.send(gptResponse);
-    }, 5000);
+      console.log(response)
+      message.channel.send(response);
+    } catch (error) {
+      console.error(error);
+      message.channel.send("Sorry, an error occurred.");
+    }
   }
 });
 
 client.login(process.env.DISCORD_TOKEN);
-
-async function getGPTResponse(input) {
-  // Replace this with the code to call the GPT API and get the response
-  const response = `GPT response to: ${input}`;
-  return response;
-}
