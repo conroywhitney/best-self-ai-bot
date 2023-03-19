@@ -5,16 +5,37 @@ import { getGPTResponse } from './gpt.js';
 
 dotenv.config();
 
+let botId = null;
+
 const client = new Client({
 	intents: [
-        GatewayIntentBits.DirectMessages,
-        GatewayIntentBits.DirectMessageReactions
+    GatewayIntentBits.DirectMessages,
+    GatewayIntentBits.DirectMessageReactions
 	],
-    partials: [Partials.Channel],
+  partials: [Partials.Channel],
 });
 
+const preloadMessages = async (channel) => {
+  const messageHistory = await channel.messages.fetch({ limit: 100 });
+  const messages = messageHistory.filter((message) => {
+    const { content } = message;
+
+    return !(content == "Sorry, an error occurred." || content == "pong" || content.startsWith("GPT response to:"))
+  }).map((message) => {
+    const { author, content } = message;
+
+    return {
+      content,
+      role: author.id == botId ? "assistant" : "user"
+    }
+  }).reverse();
+
+  return messages;
+}
+
 client.on(Events.ClientReady, () => {
-  console.log(`Logged in as ${client.user.tag}!`);
+  botId = client.user.id;
+  console.log(`Logged in as ${client.user.tag}! (${botId})`);
 });
 
 client.on(Events.MessageReactionAdd, async (reaction) => {
@@ -27,12 +48,14 @@ client.on(Events.MessageCreate, async (message) => {
 
   // Check if the message is a DM
   if (message.channel.type == ChannelType.DM) {
+    const messages = await preloadMessages(message.channel);
+
     // Start the "typing" indicator
     message.channel.sendTyping();
 
     try {
       // Relay the message to GPT and get the response
-      const { response } = await getGPTResponse(message.content);
+      const { response } = await getGPTResponse({ input: message.content, messages });
 
       console.log(response)
       message.channel.send(response);
