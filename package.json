@@ -1,0 +1,16 @@
+{
+  "name": "gpt-discord",
+  "main": "src/index.js",
+  "type": "module",
+  "dependencies": {
+    "discord.js": "14.x",
+    "dotenv": "4.x"
+  },
+  "scripts": {
+    "start": "node src/index.js"
+  },
+  "devDependencies": {
+    "eslint": "^8.36.0"
+  },
+  "packageManager": "yarn@3.5.0"
+}
