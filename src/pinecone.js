@@ -14,7 +14,7 @@ await pinecone.init({
 });
 const pineconeIndex = pinecone.Index(process.env.PINECONE_INDEX_NAME);
 
-const fileName = "docs/best-self.json";
+const fileName = "docs/zettelkasten.json";
 const messages = existsSync(fileName) ? JSON.parse(readFileSync(fileName, "utf8") || "[]") : [];
 
 const docs = messages.map(message => {
@@ -23,5 +23,7 @@ const docs = messages.map(message => {
         pageContent: JSON.stringify(message)
     });
 });
+
+console.log(docs);
 
 await PineconeStore.fromDocuments(docs, new OpenAIEmbeddings(), { pineconeIndex });

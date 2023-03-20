@@ -62,7 +62,12 @@ client.on(Events.MessageCreate, async (message) => {
 
     try {
       // Relay the message to GPT and get the response
-      const response = await getGPTResponse({ input: message.content, messages });
+      const response = await getGPTResponse({
+        docsLength: 12,
+        historyLength: 24,
+        input: message.content,
+        messages,
+      });
 
       message.channel.send(response);
     } catch (error) {

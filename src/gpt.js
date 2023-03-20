@@ -11,7 +11,7 @@ import {
 } from "langchain/prompts";
 import { PineconeStore } from "langchain/vectorstores";
 
-export const getGPTResponse = async ({ docsLength = 5, historyLength = 25, input, messages }) => {
+export const getGPTResponse = async ({ docsLength = 4, historyLength = 12, input, messages }) => {
     const llm = new ChatOpenAI({ maxTokens: 1024, modelName: "gpt-4", temperature: 0.9, topP: 1 });
     const prompt = getPrompt({ historyLength, messages })
     const chain = new LLMChain({ llm, prompt });
