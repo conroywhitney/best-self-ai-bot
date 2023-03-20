@@ -1,42 +1,36 @@
-import { ConversationChain } from "langchain/chains";
-import { ChatOpenAI } from "langchain/chat_models";
-import { AIChatMessage, ChatMessage, HumanChatMessage, SystemChatMessage } from "langchain/schema";
-import {
-  ChatPromptTemplate,
-  HumanMessagePromptTemplate,
-  SystemMessagePromptTemplate,
-  MessagesPlaceholder,
-} from "langchain/prompts";
-import { BufferMemory, ChatMessageHistory } from "langchain/memory";
-import { PineconeStore } from "langchain/vectorstores";
-import { OpenAIEmbeddings } from "langchain/embeddings";
-import { ChatVectorDBQAChain } from "langchain/chains";
 import { PineconeClient } from "@pinecone-database/pinecone";
+import { LLMChain } from "langchain/chains";
+import { ChatOpenAI } from "langchain/chat_models";
+import { OpenAIEmbeddings } from "langchain/embeddings";
+import {
+    AIMessagePromptTemplate,
+    ChatPromptTemplate,
+    HumanMessagePromptTemplate,
+    PromptTemplate,
+    SystemMessagePromptTemplate
+} from "langchain/prompts";
+import { PineconeStore } from "langchain/vectorstores";
 
-export const getGPTResponse = async ({ historyLength = 25, input, messages }) => {
-    const systemMessage = `
-        Hey GPT! You are being called from a new Discord chatbot conversation tool. The goal is to increase the quality of interactions with you by:
-        * Using the full range of interface tools that Discord has to offer (DMs, reactions, threads, select menus, buttons, etc.
-        * Saving user messages in a vector database for additional context retrieval during conversations.
-        * Adding pre-defined persona prompts and asking the user to define their intentions at the start of the conversation.
-        * Creating a conversation tree to allow users to circle back to previous topics to explore in more depth.
-        * Integrating with a library called LangChain to allow you to search the internet and perform other actions.
+export const getGPTResponse = async ({ docsLength = 5, historyLength = 25, input, messages }) => {
+    const llm = new ChatOpenAI({ maxTokens: 1024, modelName: "gpt-4", temperature: 0.9, topP: 1 });
+    const prompt = getPrompt({ historyLength, messages })
+    const chain = new LLMChain({ llm, prompt });
+    const docs = await getDocs({ docsLength, input });
+    const vector_database_docs = docs.map(doc => doc.pageContent).join("\n");
 
-        This tool is currently in development. Please be patient as we work out the kinks. If you have any feedback, suggestions, or improvements, please let me know!
-    `
+    console.log("vector_database_docs", vector_database_docs);
 
-    const llm = new ChatOpenAI({ maxTokens: 1024, modelName: "gpt-4", temperature: 1, topP: 1 });
+    console.log("chain", chain.serialize());
 
-    const prompt = ChatPromptTemplate.fromPromptMessages([
-        SystemMessagePromptTemplate.fromTemplate(systemMessage),
-        new MessagesPlaceholder("history"),
-        HumanMessagePromptTemplate.fromTemplate("{input}"),
-    ]);
+    // const response = "pong";
+    const { text: response } = await chain.call({ input, vector_database_docs });
 
-    const chatHistory = new ChatMessageHistory(messages.slice(0, historyLength).map((message) =>
-        openAIResponseToChatMessage(message.role, message.content))
-    );
+    console.log("response", response);
 
+    return response;
+}
+
+async function getDocs({ docsLength, input }) {
     const pinecone = new PineconeClient();
     await pinecone.init({
         apiKey: process.env.PINECONE_API_KEY,
@@ -44,28 +38,42 @@ export const getGPTResponse = async ({ historyLength = 25, input, messages }) =>
     });
     const pineconeIndex = pinecone.Index(process.env.PINECONE_INDEX_NAME);
     const vectorStore = await PineconeStore.fromExistingIndex(new OpenAIEmbeddings(), { pineconeIndex });
+    const docs = await vectorStore.similaritySearch(input, docsLength);
 
-    const chain = ChatVectorDBQAChain.fromLLM(llm, vectorStore, {
-        returnSourceDocuments: true,
+    console.log("docs", docs);
+
+    return docs;
+}
+
+function getPrompt({ historyLength, messages }) {
+    const systemMessage = `
+        The following is a conversation with a human user in a chat application.
+        The following documents were retrieved from a vector database based on the user's input.
+        These may or may not prove useful to helping you generate a response.
+
+        {vector_database_docs}
+    `;
+    
+    const promptMessages = [
+        SystemMessagePromptTemplate.fromTemplate(systemMessage)
+    ]
+
+    messages.slice(0, historyLength).forEach(message => {
+        promptMessages.push(openAIResponseToChatMessage(message.role, message.content));
     });
 
-    // return { text: "pong" };
-    const response = await chain.call({ chat_history: chatHistory, question: input });
+    promptMessages.push(HumanMessagePromptTemplate.fromTemplate("{input}"));
 
-    console.log("response", response);
+    console.log("promptMessages", promptMessages);
 
-    return response;
+    return ChatPromptTemplate.fromPromptMessages(promptMessages);
 }
 
 function openAIResponseToChatMessage(role, text) {
     switch (role) {
       case "user":
-        return new HumanChatMessage(text);
+        return HumanMessagePromptTemplate.fromTemplate(text);
       case "assistant":
-        return new AIChatMessage(text);
-      case "system":
-        return new SystemChatMessage(text);
-      default:
-        return new ChatMessage(text, role ?? "unknown");
+        return AIMessagePromptTemplate.fromTemplate(text);
     }
 }
