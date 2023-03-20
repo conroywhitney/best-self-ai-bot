@@ -8,19 +8,8 @@ import { OpenAI } from "langchain/llms";
 
 dotenv.config();
 
-const model = new OpenAI({ maxTokens: 2048, modelName: "gpt-3.5-turbo", temperature: 0.5 });
-
-const pinecone = new PineconeClient();
-await pinecone.init({
-  environment: process.env.PINECONE_ENVIRONMENT,
-  apiKey: process.env.PINECONE_API_KEY,
-});
-const pineconeIndex = pinecone.Index(process.env.PINECONE_INDEX_NAME);
-
-const fileName = "docs/zettelkasten.json";
-const messages = existsSync(fileName) ? JSON.parse(readFileSync(fileName, "utf8") || "[]") : [];
-
-async function summarize(message) {
+export const summarize = async (message) => {
+    const model = new OpenAI({ maxTokens: 2048, modelName: "gpt-3.5-turbo", temperature: 0.5 });
     const { content, role } = message;
 
     return await model.call(`
@@ -34,15 +23,28 @@ async function summarize(message) {
     `);
 }
 
-const docs = await Promise.all(messages.map(async (message) => {
-    const summary = await summarize(message)
-
-    return new Document({
-        metadata: { format: "json" },
-        pageContent: summary
+async function indexFile(fileName) {
+    const pinecone = new PineconeClient();
+    await pinecone.init({
+      environment: process.env.PINECONE_ENVIRONMENT,
+      apiKey: process.env.PINECONE_API_KEY,
     });
-}));
+    const pineconeIndex = pinecone.Index(process.env.PINECONE_INDEX_NAME);
 
-console.log(docs);
+    const messages = existsSync(fileName) ? JSON.parse(readFileSync(fileName, "utf8") || "[]") : [];
 
-await PineconeStore.fromDocuments(docs, new OpenAIEmbeddings(), { pineconeIndex });
+    const docs = await Promise.all(messages.map(async (message) => {
+        const summary = await summarize(message)
+
+        return new Document({
+            metadata: { format: "json" },
+            pageContent: summary
+        });
+    }));
+
+    console.log(docs);
+
+    await PineconeStore.fromDocuments(docs, new OpenAIEmbeddings(), { pineconeIndex });
+}
+
+// indexFile("messages.json");

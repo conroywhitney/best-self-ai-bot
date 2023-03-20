@@ -9,6 +9,22 @@ import {
     SystemMessagePromptTemplate
 } from "langchain/prompts";
 import { PineconeStore } from "langchain/vectorstores";
+import { OpenAI } from "langchain/llms";
+
+export const summarize = async (message) => {
+    const model = new OpenAI({ maxTokens: 2048, modelName: "gpt-3.5-turbo", temperature: 0.5 });
+    const { content, role } = message;
+
+    return await model.call(`
+        Please create a JSON representation of the following chat message so that it can be indexed in a vector database and recalled by an AI during a future conversation.
+
+        The object should have the following properties in this order: role, content, summary, keywords, searchTerms, concepts.
+
+        Role: ${role}
+        Content: ${content}
+        JSON:
+    `);
+}
 
 export const getGPTResponse = async ({ docsLength = 12, historyLength = 24, input, messages }) => {
     const llm = new ChatOpenAI({ maxTokens: 2048, modelName: "gpt-4", temperature: 0.9, topP: 1 });
@@ -34,9 +50,10 @@ async function getDocs({ docsLength, input }) {
     });
     const pineconeIndex = pinecone.Index(process.env.PINECONE_INDEX_NAME);
     const vectorStore = await PineconeStore.fromExistingIndex(new OpenAIEmbeddings(), { pineconeIndex });
-    const docs = await vectorStore.similaritySearch(input, docsLength);
+    const search = await summarize(input);
+    const docs = await vectorStore.similaritySearch(search, docsLength);
 
-    // console.log("docs", docs);
+    console.log("docs", docs);
 
     return docs;
 }
