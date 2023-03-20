@@ -55,10 +55,9 @@ client.on(Events.MessageCreate, async (message) => {
 
     try {
       // Relay the message to GPT and get the response
-      const { response } = await getGPTResponse({ input: message.content, messages });
+      const { text } = await getGPTResponse({ input: message.content, messages });
 
-      console.log(response)
-      message.channel.send(response);
+      message.channel.send(text);
     } catch (error) {
       console.error(error);
       message.channel.send("Sorry, an error occurred.");

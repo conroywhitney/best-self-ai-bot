@@ -8,8 +8,12 @@ import {
   MessagesPlaceholder,
 } from "langchain/prompts";
 import { BufferMemory, ChatMessageHistory } from "langchain/memory";
+import { PineconeStore } from "langchain/vectorstores";
+import { OpenAIEmbeddings } from "langchain/embeddings";
+import { ChatVectorDBQAChain } from "langchain/chains";
+import { PineconeClient } from "@pinecone-database/pinecone";
 
-export const getGPTResponse = async ({ input, messages }) => {
+export const getGPTResponse = async ({ historyLength = 25, input, messages }) => {
     const systemMessage = `
         Hey GPT! You are being called from a new Discord chatbot conversation tool. The goal is to increase the quality of interactions with you by:
         * Using the full range of interface tools that Discord has to offer (DMs, reactions, threads, select menus, buttons, etc.
@@ -29,17 +33,28 @@ export const getGPTResponse = async ({ input, messages }) => {
         HumanMessagePromptTemplate.fromTemplate("{input}"),
     ]);
 
-    const memory = new BufferMemory({ returnMessages: true, memoryKey: "history" })
-
-    const chatHistory = new ChatMessageHistory(messages.map((message) =>
+    const chatHistory = new ChatMessageHistory(messages.slice(0, historyLength).map((message) =>
         openAIResponseToChatMessage(message.role, message.content))
     );
-    memory.chatHistory = chatHistory;
 
-    const chain = new ConversationChain({ llm, memory, prompt });
+    const pinecone = new PineconeClient();
+    await pinecone.init({
+        apiKey: process.env.PINECONE_API_KEY,
+        environment: process.env.PINECONE_ENVIRONMENT,
+    });
+    const pineconeIndex = pinecone.Index(process.env.PINECONE_INDEX_NAME);
+    const vectorStore = await PineconeStore.fromExistingIndex(new OpenAIEmbeddings(), { pineconeIndex });
 
-    // return { response: "pong" };
-    return await chain.call({ input });
+    const chain = ChatVectorDBQAChain.fromLLM(llm, vectorStore, {
+        returnSourceDocuments: true,
+    });
+
+    // return { text: "pong" };
+    const response = await chain.call({ chat_history: chatHistory, question: input });
+
+    console.log("response", response);
+
+    return response;
 }
 
 function openAIResponseToChatMessage(role, text) {

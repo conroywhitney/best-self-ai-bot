@@ -3,6 +3,7 @@
   "main": "src/index.js",
   "type": "module",
   "dependencies": {
+    "@pinecone-database/pinecone": "^0.0.10",
     "discord.js": "14.x",
     "dotenv": "4.x",
     "langchain": "file:../../langchain/langchainjs/langchain"
