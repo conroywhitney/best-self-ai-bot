@@ -10,19 +10,16 @@ import {
 } from "langchain/prompts";
 import { PineconeStore } from "langchain/vectorstores";
 
-export const getGPTResponse = async ({ docsLength = 4, historyLength = 12, input, messages }) => {
+export const getGPTResponse = async ({ docsLength = 12, historyLength = 24, input, messages }) => {
     const llm = new ChatOpenAI({ maxTokens: 2048, modelName: "gpt-4", temperature: 0.9, topP: 1 });
-    const prompt = getPrompt({ historyLength, messages })
-    const chain = new LLMChain({ llm, prompt });
     const docs = await getDocs({ docsLength, input });
-    const vector_database_docs = docs.map(doc => doc.pageContent).join("\n");
+    const prompt = getPrompt({ docs, historyLength, messages })
+    const chain = new LLMChain({ llm, prompt });
 
-    console.log("vector_database_docs", vector_database_docs);
-
-    console.log("chain", chain.serialize());
+    // console.log("chain", chain.serialize());
 
     // const response = "pong";
-    const { text: response } = await chain.call({ input, vector_database_docs });
+    const { text: response } = await chain.call({ input });
 
     console.log("response", response);
 
@@ -39,32 +36,36 @@ async function getDocs({ docsLength, input }) {
     const vectorStore = await PineconeStore.fromExistingIndex(new OpenAIEmbeddings(), { pineconeIndex });
     const docs = await vectorStore.similaritySearch(input, docsLength);
 
-    console.log("docs", docs);
+    // console.log("docs", docs);
 
     return docs;
 }
 
-function getPrompt({ historyLength, messages }) {
+function getPrompt({ docs, historyLength, messages }) {
     const systemMessage = `
         The following is a fun, friendly, and collaborative conversation between an AI (you) and a human user in a chat application.
-        The documents below are message snippets from past conversations which were retrieved from a vector database based on the user's input.
-        Each conversation message is a JSON object with the following properties: role, content, summary, keywords, searchTerms, concepts.
-        You may choose to use them or not, depending on how you think it will help you generate a better response.
-
-        {vector_database_docs}
     `;
     
     const promptMessages = [
         SystemMessagePromptTemplate.fromTemplate(systemMessage)
     ]
 
-    messages.slice(0, historyLength).forEach(message => {
+    docs.forEach(doc => {
+        try {
+            const jsonDoc = JSON.parse(doc.pageContent);
+            promptMessages.push(openAIResponseToChatMessage(jsonDoc.role, jsonDoc.content));
+        } catch (error) {
+            console.error("Could not include doc", doc, error);
+        }
+    });
+
+    messages.slice(0, historyLength).reverse().forEach(message => {
         promptMessages.push(openAIResponseToChatMessage(message.role, message.content));
     });
 
     promptMessages.push(HumanMessagePromptTemplate.fromTemplate("{input}"));
 
-    console.log("promptMessages", promptMessages);
+    // console.log("promptMessages", promptMessages);
 
     return ChatPromptTemplate.fromPromptMessages(promptMessages);
 }

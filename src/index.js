@@ -35,7 +35,7 @@ const preloadMessages = async (channel) => {
       content,
       role: author.id == botId ? "assistant" : "user"
     }
-  }).reverse();
+  })
 
   return messages;
 }
@@ -63,7 +63,7 @@ client.on(Events.MessageCreate, async (message) => {
     try {
       // Relay the message to GPT and get the response
       const response = await getGPTResponse({
-        docsLength: 8,
+        docsLength: 12,
         historyLength: 24,
         input: message.content,
         messages,
