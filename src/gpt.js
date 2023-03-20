@@ -32,7 +32,7 @@ export const getGPTResponse = async ({ docsLength = 12, historyLength = 24, inpu
     const prompt = getPrompt({ docs, historyLength, messages })
     const chain = new LLMChain({ llm, prompt });
 
-    // console.log("chain", chain.serialize());
+    console.log("chain", chain.serialize());
 
     // const response = "pong";
     const { text: response } = await chain.call({ input });
@@ -67,22 +67,31 @@ function getPrompt({ docs, historyLength, messages }) {
         SystemMessagePromptTemplate.fromTemplate(systemMessage)
     ]
 
+    messages.slice(0, historyLength).reverse().forEach(message => {
+        promptMessages.push(openAIResponseToChatMessage(message.role, message.content));
+    });
+
     docs.forEach(doc => {
         try {
-            const jsonDoc = JSON.parse(doc.pageContent);
-            promptMessages.push(openAIResponseToChatMessage(jsonDoc.role, jsonDoc.content));
+            const { content, role } = JSON.parse(doc.pageContent);
+            promptMessages.push(
+                SystemMessagePromptTemplate.fromTemplate(`
+                    The following is a past chat message that was indexed in a vector database recalled by search of the most recent user message.
+                    It may or may not be relevant to the current conversation, so it's up to the AI to decide whether to include it in the response.
+                    The user does not have acccess to the vector database, so they will not know if the AI is including a past message in the response.
+
+                    Role: ${role}
+                    Content: ${content}
+                `)
+            );
         } catch (error) {
             console.error("Could not include doc", doc, error);
         }
     });
 
-    messages.slice(0, historyLength).reverse().forEach(message => {
-        promptMessages.push(openAIResponseToChatMessage(message.role, message.content));
-    });
-
     promptMessages.push(HumanMessagePromptTemplate.fromTemplate("{input}"));
 
-    // console.log("promptMessages", promptMessages);
+    console.log("promptMessages", promptMessages);
 
     return ChatPromptTemplate.fromPromptMessages(promptMessages);
 }
