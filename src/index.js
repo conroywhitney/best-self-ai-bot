@@ -63,7 +63,7 @@ client.on(Events.MessageCreate, async (message) => {
     try {
       // Relay the message to GPT and get the response
       const response = await getGPTResponse({
-        docsLength: 12,
+        docsLength: 8,
         historyLength: 24,
         input: message.content,
         messages,

@@ -6,13 +6,12 @@ import {
     AIMessagePromptTemplate,
     ChatPromptTemplate,
     HumanMessagePromptTemplate,
-    PromptTemplate,
     SystemMessagePromptTemplate
 } from "langchain/prompts";
 import { PineconeStore } from "langchain/vectorstores";
 
 export const getGPTResponse = async ({ docsLength = 4, historyLength = 12, input, messages }) => {
-    const llm = new ChatOpenAI({ maxTokens: 1024, modelName: "gpt-4", temperature: 0.9, topP: 1 });
+    const llm = new ChatOpenAI({ maxTokens: 2048, modelName: "gpt-4", temperature: 0.9, topP: 1 });
     const prompt = getPrompt({ historyLength, messages })
     const chain = new LLMChain({ llm, prompt });
     const docs = await getDocs({ docsLength, input });
@@ -47,9 +46,10 @@ async function getDocs({ docsLength, input }) {
 
 function getPrompt({ historyLength, messages }) {
     const systemMessage = `
-        The following is a conversation with a human user in a chat application.
-        The following documents were retrieved from a vector database based on the user's input.
-        These may or may not prove useful to helping you generate a response.
+        The following is a fun, friendly, and collaborative conversation between an AI (you) and a human user in a chat application.
+        The documents below are message snippets from past conversations which were retrieved from a vector database based on the user's input.
+        Each conversation message is a JSON object with the following properties: role, content, summary, keywords, searchTerms, concepts.
+        You may choose to use them or not, depending on how you think it will help you generate a better response.
 
         {vector_database_docs}
     `;
