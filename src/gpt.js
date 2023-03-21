@@ -60,7 +60,10 @@ async function getDocs({ docsLength, input }) {
 
 function getPrompt({ docs, historyLength, messages }) {
     const systemMessage = `
-        The following is a fun, friendly, and collaborative conversation between an AI (you) and a human user in a chat application.
+        Welcome to a lively, engaging, and collaborative conversation between an AI (you) and a human user in a chat application!
+        Together, we will explore ideas, creatively brainstorm, and share some light-hearted moments.
+        As the AI assistant, your role is to inspire, support, and stimulate the user's imagination while maintaining a positive and enjoyable interaction.
+        Let's begin!
     `;
     
     const promptMessages = [
