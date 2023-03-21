@@ -20,7 +20,14 @@ const preloadMessages = async (channel) => {
   const messages = messageHistory.filter((message) => {
     const { content } = message;
 
-    return !(content == "Sorry, an error occurred." || content == "pong" || content.startsWith("GPT response to:"))
+    return !(
+      content == "Sorry, an error occurred." ||
+      content == "pong" ||
+      content.startsWith("GPT response to:") ||
+      content.startsWith("I received the following prompt:") ||
+      content.startsWith("Yes, here is everything I received as part of this message:") ||
+      content.startsWith("I'm glad the formatting is working well for the most part")
+    )
   }).map((message) => {
     const { author, content } = message;
 
@@ -28,7 +35,7 @@ const preloadMessages = async (channel) => {
       content,
       role: author.id == botId ? "assistant" : "user"
     }
-  }).reverse();
+  })
 
   return messages;
 }
@@ -55,9 +62,13 @@ client.on(Events.MessageCreate, async (message) => {
 
     try {
       // Relay the message to GPT and get the response
-      const { response } = await getGPTResponse({ input: message.content, messages });
+      const response = await getGPTResponse({
+        docsLength: 12,
+        historyLength: 24,
+        input: message.content,
+        messages,
+      });
 
-      console.log(response)
       message.channel.send(response);
     } catch (error) {
       console.error(error);

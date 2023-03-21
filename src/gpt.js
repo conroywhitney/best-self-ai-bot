@@ -1,56 +1,109 @@
-import { ConversationChain } from "langchain/chains";
+import { PineconeClient } from "@pinecone-database/pinecone";
+import { LLMChain } from "langchain/chains";
 import { ChatOpenAI } from "langchain/chat_models";
-import { AIChatMessage, ChatMessage, HumanChatMessage, SystemChatMessage } from "langchain/schema";
+import { OpenAIEmbeddings } from "langchain/embeddings";
 import {
-  ChatPromptTemplate,
-  HumanMessagePromptTemplate,
-  SystemMessagePromptTemplate,
-  MessagesPlaceholder,
+    AIMessagePromptTemplate,
+    ChatPromptTemplate,
+    HumanMessagePromptTemplate,
+    SystemMessagePromptTemplate
 } from "langchain/prompts";
-import { BufferMemory, ChatMessageHistory } from "langchain/memory";
+import { PineconeStore } from "langchain/vectorstores";
+import { OpenAI } from "langchain/llms";
 
-export const getGPTResponse = async ({ input, messages }) => {
+export const summarize = async (message) => {
+    const model = new OpenAI({ maxTokens: 2048, modelName: "gpt-3.5-turbo", temperature: 0.5 });
+    const { content, role } = message;
+
+    return await model.call(`
+        Please create a JSON representation of the following chat message so that it can be indexed in a vector database and recalled by an AI during a future conversation.
+
+        The object should have the following properties in this order: role, content, summary, keywords, searchTerms, concepts.
+
+        Role: ${role}
+        Content: ${content}
+        JSON:
+    `);
+}
+
+export const getGPTResponse = async ({ docsLength = 12, historyLength = 24, input, messages }) => {
+    const llm = new ChatOpenAI({ maxTokens: 2048, modelName: "gpt-4", temperature: 0.9, topP: 1 });
+    const docs = await getDocs({ docsLength, input });
+    const prompt = getPrompt({ docs, historyLength, messages })
+    const chain = new LLMChain({ llm, prompt });
+
+    console.log("chain", chain.serialize());
+
+    // const response = "pong";
+    const { text: response } = await chain.call({ input });
+
+    console.log("response", response);
+
+    return response;
+}
+
+async function getDocs({ docsLength, input }) {
+    const pinecone = new PineconeClient();
+    await pinecone.init({
+        apiKey: process.env.PINECONE_API_KEY,
+        environment: process.env.PINECONE_ENVIRONMENT,
+    });
+    const pineconeIndex = pinecone.Index(process.env.PINECONE_INDEX_NAME);
+    const vectorStore = await PineconeStore.fromExistingIndex(new OpenAIEmbeddings(), { pineconeIndex });
+    const search = await summarize(input);
+    const docs = await vectorStore.similaritySearch(search, docsLength);
+
+    console.log("docs", docs);
+
+    return docs;
+}
+
+function getPrompt({ docs, historyLength, messages }) {
     const systemMessage = `
-        Hey GPT! You are being called from a new Discord chatbot conversation tool. The goal is to increase the quality of interactions with you by:
-        * Using the full range of interface tools that Discord has to offer (DMs, reactions, threads, select menus, buttons, etc.
-        * Saving user messages in a vector database for additional context retrieval during conversations.
-        * Adding pre-defined persona prompts and asking the user to define their intentions at the start of the conversation.
-        * Creating a conversation tree to allow users to circle back to previous topics to explore in more depth.
-        * Integrating with a library called LangChain to allow you to search the internet and perform other actions.
+        Welcome to a lively, engaging, and collaborative conversation between an AI (you) and a human user in a chat application!
+        Together, we will explore ideas, creatively brainstorm, and share some light-hearted moments.
+        As the AI assistant, your role is to inspire, support, and stimulate the user's imagination while maintaining a positive and enjoyable interaction.
+        Let's begin!
+    `;
+    
+    const promptMessages = [
+        SystemMessagePromptTemplate.fromTemplate(systemMessage)
+    ]
 
-        This tool is currently in development. Please be patient as we work out the kinks. If you have any feedback, suggestions, or improvements, please let me know!
-    `
+    messages.slice(0, historyLength).reverse().forEach(message => {
+        promptMessages.push(openAIResponseToChatMessage(message.role, message.content));
+    });
 
-    const llm = new ChatOpenAI({ maxTokens: 1024, modelName: "gpt-4", temperature: 1, topP: 1 });
+    docs.forEach(doc => {
+        try {
+            const { content, role } = JSON.parse(doc.pageContent);
+            promptMessages.push(
+                SystemMessagePromptTemplate.fromTemplate(`
+                    The following is a past chat message that was indexed in a vector database recalled by search of the most recent user message.
+                    It may or may not be relevant to the current conversation, so it's up to the AI to decide whether to include it in the response.
+                    The user does not have acccess to the vector database, so they will not know if the AI is including a past message in the response.
 
-    const prompt = ChatPromptTemplate.fromPromptMessages([
-        SystemMessagePromptTemplate.fromTemplate(systemMessage),
-        new MessagesPlaceholder("history"),
-        HumanMessagePromptTemplate.fromTemplate("{input}"),
-    ]);
+                    Role: ${role}
+                    Content: ${content}
+                `)
+            );
+        } catch (error) {
+            console.error("Could not include doc", doc, error);
+        }
+    });
 
-    const memory = new BufferMemory({ returnMessages: true, memoryKey: "history" })
+    promptMessages.push(HumanMessagePromptTemplate.fromTemplate("{input}"));
 
-    const chatHistory = new ChatMessageHistory(messages.map((message) =>
-        openAIResponseToChatMessage(message.role, message.content))
-    );
-    memory.chatHistory = chatHistory;
+    console.log("promptMessages", promptMessages);
 
-    const chain = new ConversationChain({ llm, memory, prompt });
-
-    // return { response: "pong" };
-    return await chain.call({ input });
+    return ChatPromptTemplate.fromPromptMessages(promptMessages);
 }
 
 function openAIResponseToChatMessage(role, text) {
     switch (role) {
       case "user":
-        return new HumanChatMessage(text);
+        return HumanMessagePromptTemplate.fromTemplate(text);
       case "assistant":
-        return new AIChatMessage(text);
-      case "system":
-        return new SystemChatMessage(text);
-      default:
-        return new ChatMessage(text, role ?? "unknown");
+        return AIMessagePromptTemplate.fromTemplate(text);
     }
 }
